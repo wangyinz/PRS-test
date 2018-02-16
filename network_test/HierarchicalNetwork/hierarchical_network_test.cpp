@@ -49,23 +49,23 @@ int send_done(int n, int r) {
   return 0;
 }
 
-unsigned long upper_power_of_two(unsigned long v)
-{
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-    return v;
-}
+//unsigned long upper_power_of_two(unsigned long v)
+//{
+//    v--;
+//    v |= v >> 1;
+//    v |= v >> 2;
+//    v |= v >> 4;
+//    v |= v >> 8;
+//    v |= v >> 16;
+//    v++;
+//    return v;
+//}
 
 int get_target(int root, int rank, int* rank_list, int &rank_list_size, int* target_list, int &target_list_size)
 {
 	int dst;
   int relative_rank = (rank >= root) ? rank - root : rank - root + rank_list_size;
-  int n = upper_power_of_two(rank_list_size);
+//  int n = upper_power_of_two(rank_list_size);
   target_list_size=0;
 	int mask = 0x1;
 	while (mask < rank_list_size)
