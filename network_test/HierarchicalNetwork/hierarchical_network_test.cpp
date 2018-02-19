@@ -107,6 +107,21 @@ int get_target(int root, int rank, int* rank_list, int &rank_list_size, int* tar
   return 0;
 }
 
+int receive_once(int rank, int nproc, int i, char* send, char **recv) {
+  photon_cid request;
+  int flag, src;
+  do {
+    photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
+    if (request.u64 == 0xcafebabe) {
+      if (verbose) printf("%d received parcel from %d\n", rank, src);
+      send=recv[src];
+      memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
+			MPI_Barrier(MPI_COMM_WORLD);
+  		return 0;
+    }
+  } while (1);
+}
+
 int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_buffer_t lbuf, struct photon_buffer_t* rbuf, photon_cid lid, photon_cid rid) {
   photon_cid request;
   int flag, src;
@@ -129,6 +144,7 @@ int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_
 	  		if (verbose) printf("%d send parcel to %d\n", rank, send_list[j]);
       }
 			MPI_Barrier(MPI_COMM_WORLD);
+			receive_once(rank, nproc, i, send, recv);
     }
   } while (request.u64 != 0xdeadbeef);
 
@@ -240,7 +256,7 @@ int main(int argc, char *argv[]) {
 
   // now we can proceed with our benchmark
   if (rank == 0)
-    printf("%-7s%-9s%-12s%-12s%-14s\n", "Ranks", "Senders", "Bytes",\
+    printf("%-7s%-9s%-9s%-12s%-12s%-14s\n", "Ranks", "Senders", "Method", "Bytes",\
 	   "Time (s)",	"Time (us)");
 
   struct timespec time_s, time_e;
@@ -267,6 +283,7 @@ int main(int argc, char *argv[]) {
 
       // PUT
       if (rank == ns) {
+				//Hierarchical broadcast
 				clock_gettime(CLOCK_MONOTONIC, &time_s);
 				lbuf.addr = (uintptr_t)send;
 				lbuf.size = i;
@@ -280,7 +297,35 @@ int main(int argc, char *argv[]) {
 
 				if (rank == ns) {
 					printf("%-7d", nproc);
-					printf("%-9u", ns + 1);
+					printf("%-9u", ns);
+					printf("%-9s", "H");
+					printf("%-12u", i);
+		      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+		      double time_ss = time_ns/1e9;
+		      double time_us = time_ns/1e3;
+					printf("%-12.2f", time_ss);
+					printf("%-14.2f\n", time_us);
+					fflush(stdout);
+				}
+				
+				//Simple broadcast
+				clock_gettime(CLOCK_MONOTONIC, &time_s);
+				lbuf.addr = (uintptr_t)send;
+				lbuf.size = i;
+				lbuf.priv = (struct photon_buffer_priv_t){0,0};
+				for (j=0; j<nproc; j++) {
+					if(j != rank) {
+						photon_put_with_completion(j, i, &lbuf, &rbuf[j], lid, rid, 0);
+						if (verbose) printf("%d send parcel to %d\n", rank, j);
+					}
+				}
+				MPI_Barrier(MPI_COMM_WORLD);	
+		    clock_gettime(CLOCK_MONOTONIC, &time_e);
+
+				if (rank == ns) {
+					printf("%-7d", nproc);
+					printf("%-9u", ns);
+					printf("%-9s", "S");
 					printf("%-12u", i);
 		      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
 		      double time_ss = time_ns/1e9;
