@@ -83,7 +83,7 @@ int get_target(int root, int rank, int* rank_list, int &rank_list_size, int* tar
 		{
 	    dst = rank + mask;
 	    if (dst >= rank_list_size) dst -= rank_list_size;
-      target_list[target_list_size] = dst;
+      target_list[target_list_size] = rank_list[dst];
       target_list_size++;
 		}
 		mask >>= 1;
