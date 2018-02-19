@@ -64,7 +64,23 @@ int send_done(int n, int r) {
 int get_target(int root, int rank, int* rank_list, int &rank_list_size, int* target_list, int &target_list_size)
 {
 	int dst;
-  int relative_rank = (rank >= root) ? rank - root : rank - root + rank_list_size;
+	int myrank = -1;
+	int root_rank = -1;
+	int i;
+	for (int i=0; i<rank_list_size && (myrank==-1 || root_rank==-1); i++)
+	{
+		if (rank_list[i] == rank)
+		{
+		  myrank = i;
+		}
+		if (rank_list[i] == root)
+		{
+		  root_rank = i;
+		}
+	}
+	if(myrank==-1) exit(-1);
+	if(root_rank==-1) exit(-1);
+  int relative_rank = (myrank >= root_rank) ? myrank - root_rank : myrank - root_rank + rank_list_size;
 //  int n = upper_power_of_two(rank_list_size);
   target_list_size=0;
 	int mask = 0x1;
@@ -81,7 +97,7 @@ int get_target(int root, int rank, int* rank_list, int &rank_list_size, int* tar
 	{
 		if (relative_rank + mask < rank_list_size)
 		{
-	    dst = rank + mask;
+	    dst = myrank + mask;
 	    if (dst >= rank_list_size) dst -= rank_list_size;
       target_list[target_list_size] = rank_list[dst];
       target_list_size++;
@@ -242,7 +258,7 @@ int main(int argc, char *argv[]) {
       parcel* pack = reinterpret_cast<parcel*> (send);
       pack->source = ns;
 			for (j=0; j<nproc; j++)
-				pack->rank_list[j]=j;
+				pack->rank_list[j]=nproc-1-j; //make the list in reverse order
 			
       int* send_list;
       int send_list_size;
