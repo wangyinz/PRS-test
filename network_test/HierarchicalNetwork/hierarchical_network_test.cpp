@@ -114,8 +114,10 @@ int receive_once(int rank, int nproc, int i, char* send, char **recv) {
     photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
     if (request.u64 == 0xcafebabe) {
       if (verbose) printf("%d received parcel from %d\n", rank, src);
-      send=recv[src];
-      memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
+      //send=recv[src];
+      //memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
+      send=recv[0];
+      memcpy(send, recv[0], PHOTON_BUF_SIZE*sizeof(uint8_t));
 			MPI_Barrier(MPI_COMM_WORLD);
   		return 0;
     }
@@ -129,8 +131,10 @@ int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_
     photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
     if (request.u64 == 0xcafebabe) {
       if (verbose) printf("%d received parcel from %d\n", rank, src);
-      send=recv[src];
-      memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
+      //send=recv[src];
+      //memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
+      send=recv[0];
+      memcpy(send, recv[0], PHOTON_BUF_SIZE*sizeof(uint8_t));
       parcel* pack = reinterpret_cast<parcel*> (send);
       int* send_list;
       int send_list_size;
@@ -235,14 +239,16 @@ int main(int argc, char *argv[]) {
   photon_register_buffer(send, PHOTON_BUF_SIZE);
 
   // ... but recv buffers for each potential sender
-  for (i=0; i<nproc; i++) {
+  //for (i=0; i<nproc; i++) {
+  for (i=0; i<1; i++) {
     posix_memalign((void **) &recv[i], 8, PHOTON_BUF_SIZE*sizeof(uint8_t));
     photon_register_buffer(recv[i], PHOTON_BUF_SIZE);
   }
   
   for (i=0; i<nproc; i++) {
     // everyone posts their recv buffers
-    photon_post_recv_buffer_rdma(i, recv[i], PHOTON_BUF_SIZE, PHOTON_TAG, &recvReq[i]);
+    //photon_post_recv_buffer_rdma(i, recv[i], PHOTON_BUF_SIZE, PHOTON_TAG, &recvReq[i]);
+    photon_post_recv_buffer_rdma(i, recv[0], PHOTON_BUF_SIZE, PHOTON_TAG, &recvReq[i]);
   }
 
   for (i=0; i<nproc; i++) {
@@ -349,7 +355,8 @@ int main(int argc, char *argv[]) {
  exit:
   photon_unregister_buffer(send, PHOTON_BUF_SIZE);
   free(send);
-  for (i=0; i<nproc; i++) {
+  //for (i=0; i<nproc; i++) {
+  for (i=0; i<1; i++) {
     photon_unregister_buffer(recv[i], PHOTON_BUF_SIZE);
     free(recv[i]);
   }
