@@ -1,4 +1,4 @@
-BIN=hierarchical_network_test
+BIN=hierarchical_bcast
 CXX = mpic++ -std=c++11
 CXXFLAGS = -O3
 RM = rm
@@ -6,7 +6,7 @@ RM = rm
 CXXFLAGS += -I/N/u/wangyinz/Karst/HPX_project/network_test/install/include
 LDFLAGS += -L/N/u/wangyinz/Karst/HPX_project/network_test/install/lib
 LDLIBS = -lphoton -lrt -lmpi
-OBJS = hierarchical_network_test.o 
+OBJS = hierarchical_bcast.o 
 $(BIN) : $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS)
 
