@@ -116,7 +116,7 @@ int receive_once(int rank, int nproc, int i, char* send, char **recv) {
       if (verbose) printf("%d received parcel from %d\n", rank, src);
       //send=recv[src];
       //memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
-      send=recv[0];
+      //send=recv[0];
       memcpy(send, recv[0], PHOTON_BUF_SIZE*sizeof(uint8_t));
 			MPI_Barrier(MPI_COMM_WORLD);
   		return 0;
@@ -133,7 +133,7 @@ int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_
       if (verbose) printf("%d received parcel from %d\n", rank, src);
       //send=recv[src];
       //memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
-      send=recv[0];
+      //send=recv[0];
       memcpy(send, recv[0], PHOTON_BUF_SIZE*sizeof(uint8_t));
       parcel* pack = reinterpret_cast<parcel*> (send);
       int* send_list;
