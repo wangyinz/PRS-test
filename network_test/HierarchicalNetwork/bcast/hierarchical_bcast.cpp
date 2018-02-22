@@ -341,12 +341,33 @@ int main(int argc, char *argv[]) {
 					fflush(stdout);
 				}
 			}
-
-      if (!a) a = 0.5;
     
       if (rank == ns) {
         send_done(nproc, rank);
       }
+      
+  		//MPI bcast
+			MPI_Barrier(MPI_COMM_WORLD);	
+      if (rank == ns)
+				clock_gettime(CLOCK_MONOTONIC, &time_s);
+  		MPI_Bcast(send, i, MPI_BYTE, ns, MPI_COMM_WORLD);
+			MPI_Barrier(MPI_COMM_WORLD);
+      if (rank == ns)	{
+		    clock_gettime(CLOCK_MONOTONIC, &time_e);
+				printf("%-7d", nproc);
+				printf("%-9u", ns);
+				printf("%-9s", "MPI");
+				printf("%-12u", i);
+	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+	      double time_ss = time_ns/1e9;
+	      double time_us = time_ns/1e3;
+				printf("%-12.2f", time_ss);
+				printf("%-14.2f\n", time_us);
+				fflush(stdout);
+			}		
+
+      if (!a) a = 0.5;
+      
     }
   }
 
