@@ -350,7 +350,7 @@ int main(int argc, char *argv[]) {
   		//MPI reduce
       if (rank == ns)
 				clock_gettime(CLOCK_MONOTONIC, &time_s);
-  		MPI_Reduce(send,recv[0],i,MPI_BYTE,MPI_SUM,ns,MPI_COMM_WORLD);
+  		MPI_Reduce(send,recv[0],i/sizeof(uint8_t),MPI_INT,MPI_SUM,ns,MPI_COMM_WORLD);
   		MPI_Barrier(MPI_COMM_WORLD);
       if (rank == ns)	{
 		    clock_gettime(CLOCK_MONOTONIC, &time_e);
