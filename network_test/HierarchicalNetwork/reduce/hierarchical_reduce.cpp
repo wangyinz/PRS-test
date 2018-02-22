@@ -345,6 +345,27 @@ int main(int argc, char *argv[]) {
 				fflush(stdout);
 			}
   		MPI_Barrier(MPI_COMM_WORLD);
+  		
+  		pack->data=rank;
+  		//MPI reduce
+      if (rank == ns)
+				clock_gettime(CLOCK_MONOTONIC, &time_s);
+  		MPI_Reduce(send,recv[0],i,MPI_BYTE,MPI_SUM,ns,MPI_COMM_WORLD);
+      if (rank == ns)	{
+		    clock_gettime(CLOCK_MONOTONIC, &time_e);
+				parcel* pack_r = reinterpret_cast<parcel*> (recv[0]);
+				printf("%-7d", nproc);
+				printf("%-9u", pack_r->data);
+				printf("%-9s", "MPI");
+				printf("%-12u", i);
+	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+	      double time_ss = time_ns/1e9;
+	      double time_us = time_ns/1e3;
+				printf("%-12.2f", time_ss);
+				printf("%-14.2f\n", time_us);
+				fflush(stdout);
+			}
+  		MPI_Barrier(MPI_COMM_WORLD);
 
       if (!a) a = 0.5;
     
