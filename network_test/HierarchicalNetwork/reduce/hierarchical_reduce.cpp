@@ -351,6 +351,7 @@ int main(int argc, char *argv[]) {
       if (rank == ns)
 				clock_gettime(CLOCK_MONOTONIC, &time_s);
   		MPI_Reduce(send,recv[0],i,MPI_BYTE,MPI_SUM,ns,MPI_COMM_WORLD);
+  		MPI_Barrier(MPI_COMM_WORLD);
       if (rank == ns)	{
 		    clock_gettime(CLOCK_MONOTONIC, &time_e);
 				parcel* pack_r = reinterpret_cast<parcel*> (recv[0]);
@@ -365,7 +366,6 @@ int main(int argc, char *argv[]) {
 				printf("%-14.2f\n", time_us);
 				fflush(stdout);
 			}
-  		MPI_Barrier(MPI_COMM_WORLD);
 
       if (!a) a = 0.5;
     
