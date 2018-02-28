@@ -270,7 +270,7 @@ int main(int argc, char *argv[]) {
 								parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
 								pack_r->data += pack_s->data;
 								if (verbose) printf("%d has data %d\n", rank, pack_r->data);
-								memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t)); //memory copy to mimic a real operation defined in reduce
+								memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
 								break;
 							}
 						} while(1);
@@ -326,7 +326,7 @@ int main(int argc, char *argv[]) {
 						parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
 						pack_r->data += pack_s->data;
 						if (verbose) printf("%d has data %d\n", rank, pack_r->data);
-						memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t)); //memory copy to mimic a real operation defined in reduce
+						memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
 						count++;
 					}
 				} while(count<nproc-1);
