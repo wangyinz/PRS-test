@@ -266,11 +266,18 @@ int main(int argc, char *argv[]) {
 							photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
 							if (request.u64 == 0xcafebabe ) {
 								if (verbose) printf("%d received parcel from %d\n", rank, src);
-								parcel* pack_s = reinterpret_cast<parcel*> (send);
-								parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
-								pack_r->data += pack_s->data;
-								if (verbose) printf("%d has data %d\n", rank, pack_r->data);
-								memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
+								//parcel* pack_s = reinterpret_cast<parcel*> (send);
+								//parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
+								//pack_r->data += pack_s->data;
+								//if (verbose) printf("%d has data %d\n", rank, pack_r->data);
+								//memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
+								int* pack_s = reinterpret_cast<int*> (send);
+								int* pack_r = reinterpret_cast<int*> (recv[src]);
+								for(int k = 0; k < i/sizeof(int); k++)
+								{
+									pack_s[k] += pack_r[k];
+								}
+								if (verbose) printf("%d has data %d\n", rank, pack_s[0]);
 								break;
 							}
 						} while(1);
@@ -322,11 +329,18 @@ int main(int argc, char *argv[]) {
 					photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
 					if (request.u64 == 0xcafebabe ) {
 						if (verbose) printf("%d received parcel from %d\n", rank, src);
-						parcel* pack_s = reinterpret_cast<parcel*> (send);
-						parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
-						pack_r->data += pack_s->data;
-						if (verbose) printf("%d has data %d\n", rank, pack_r->data);
-						memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
+//						parcel* pack_s = reinterpret_cast<parcel*> (send);
+//						parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
+//						pack_r->data += pack_s->data;
+//						if (verbose) printf("%d has data %d\n", rank, pack_r->data);
+//						memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
+						int* pack_s = reinterpret_cast<int*> (send);
+						int* pack_r = reinterpret_cast<int*> (recv[src]);
+						for(int k = 0; k < i/sizeof(int); k++)
+						{
+							pack_s[k] += pack_r[k];
+						}
+						if (verbose) printf("%d has data %d\n", rank, pack_s[0]);
 						count++;
 					}
 				} while(count<nproc-1);
