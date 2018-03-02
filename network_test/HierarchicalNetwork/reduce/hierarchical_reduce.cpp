@@ -20,7 +20,7 @@
 #define PHOTON_BUF_SIZE (1024*1024*128) // 128M
 #define PHOTON_TAG       UINT32_MAX
 
-#define LIST_LIMIT      1000
+#define ITER      20
 
 
 using namespace std;
@@ -256,53 +256,58 @@ int main(int argc, char *argv[]) {
 			//Hierarchical reduce
       if (rank == ns)
 				clock_gettime(CLOCK_MONOTONIC, &time_s);
-			while (mask < comm_size) {
-				/* Receive */
-				if ((mask & relrank) == 0) {
-					source = (relrank | mask);
-					if (source < comm_size) {
-				    source = (source + lroot) % comm_size;
-						do {
-							photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
-							if (request.u64 == 0xcafebabe ) {
-								if (verbose) printf("%d received parcel from %d\n", rank, src);
-								//parcel* pack_s = reinterpret_cast<parcel*> (send);
-								//parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
-								//pack_r->data += pack_s->data;
-								//if (verbose) printf("%d has data %d\n", rank, pack_r->data);
-								//memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
-								int* pack_s = reinterpret_cast<int*> (send);
-								int* pack_r = reinterpret_cast<int*> (recv[src]);
-								for(int k = 0; k < i/sizeof(int); k++)
-								{
-									pack_s[k] += pack_r[k];
+			for (int ii=0;ii<ITER;ii++) {
+				pack->data=rank;
+				mask    = 0x1;
+				while (mask < comm_size) {
+					/* Receive */
+					if ((mask & relrank) == 0) {
+						source = (relrank | mask);
+						if (source < comm_size) {
+						  source = (source + lroot) % comm_size;
+							do {
+								photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
+								if (request.u64 == 0xcafebabe ) {
+									if (verbose) printf("%d received parcel from %d\n", rank, src);
+									//parcel* pack_s = reinterpret_cast<parcel*> (send);
+									//parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
+									//pack_r->data += pack_s->data;
+									//if (verbose) printf("%d has data %d\n", rank, pack_r->data);
+									//memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
+									int* pack_s = reinterpret_cast<int*> (send);
+									int* pack_r = reinterpret_cast<int*> (recv[src]);
+									for(int k = 0; k < i/sizeof(int); k++)
+									{
+										pack_s[k] += pack_r[k];
+									}
+									if (verbose) printf("%d has data %d\n", rank, pack_s[0]);
+									break;
 								}
-								if (verbose) printf("%d has data %d\n", rank, pack_s[0]);
-								break;
-							}
-						} while(1);
+							} while(1);
+						}
 					}
+					else {
+						/* I've received all that I'm going to.  Send my result to 
+							 my parent */
+						source = ((relrank & (~ mask)) + lroot) % comm_size;
+						lbuf.addr = (uintptr_t)send;
+						lbuf.size = i;
+						lbuf.priv = (struct photon_buffer_priv_t){0,0};
+						photon_put_with_completion(source, i, &lbuf, &rbuf[source], lid, rid, 0);
+						if (verbose) printf("%d send parcel to %d\n", rank, source);
+						break;
+					}
+					mask <<= 1;
 				}
-				else {
-					/* I've received all that I'm going to.  Send my result to 
-						 my parent */
-					source = ((relrank & (~ mask)) + lroot) % comm_size;
-					lbuf.addr = (uintptr_t)send;
-					lbuf.size = i;
-					lbuf.priv = (struct photon_buffer_priv_t){0,0};
-					photon_put_with_completion(source, i, &lbuf, &rbuf[source], lid, rid, 0);
-					if (verbose) printf("%d send parcel to %d\n", rank, source);
-					break;
-				}
-				mask <<= 1;
-			}		
+  			MPI_Barrier(MPI_COMM_WORLD);		
+			}
       if (rank == ns)	{
 		    clock_gettime(CLOCK_MONOTONIC, &time_e);
 				printf("%-7d", nproc);
 				printf("%-9u", pack->data);
 				printf("%-9s", "H");
 				printf("%-12u", i);
-	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec))/ITER;
 	      double time_ss = time_ns/1e9;
 	      double time_us = time_ns/1e3;
 				printf("%-12.2f", time_ss);
@@ -312,46 +317,49 @@ int main(int argc, char *argv[]) {
   		MPI_Barrier(MPI_COMM_WORLD);
 			
 			
-			pack->data=rank;
 			//Simple reduce
       if (rank == ns)
 				clock_gettime(CLOCK_MONOTONIC, &time_s);
-			if (rank != ns) {
-				lbuf.addr = (uintptr_t)send;
-				lbuf.size = i;
-				lbuf.priv = (struct photon_buffer_priv_t){0,0};
-				photon_put_with_completion(ns, i, &lbuf, &rbuf[ns], lid, rid, 0);
-				if (verbose) printf("%d send parcel to %d\n", rank, ns);
-			} 
-			else {
-				int count = 0;
-				do {
-					photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
-					if (request.u64 == 0xcafebabe ) {
-						if (verbose) printf("%d received parcel from %d\n", rank, src);
-//						parcel* pack_s = reinterpret_cast<parcel*> (send);
-//						parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
-//						pack_r->data += pack_s->data;
-//						if (verbose) printf("%d has data %d\n", rank, pack_r->data);
-//						memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
-						int* pack_s = reinterpret_cast<int*> (send);
-						int* pack_r = reinterpret_cast<int*> (recv[src]);
-						for(int k = 0; k < i/sizeof(int); k++)
-						{
-							pack_s[k] += pack_r[k];
+			for (int ii=0;ii<ITER;ii++) {
+				pack->data=rank;
+				if (rank != ns) {
+					lbuf.addr = (uintptr_t)send;
+					lbuf.size = i;
+					lbuf.priv = (struct photon_buffer_priv_t){0,0};
+					photon_put_with_completion(ns, i, &lbuf, &rbuf[ns], lid, rid, 0);
+					if (verbose) printf("%d send parcel to %d\n", rank, ns);
+				} 
+				else {
+					int count = 0;
+					do {
+						photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
+						if (request.u64 == 0xcafebabe ) {
+							if (verbose) printf("%d received parcel from %d\n", rank, src);
+	//						parcel* pack_s = reinterpret_cast<parcel*> (send);
+	//						parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
+	//						pack_r->data += pack_s->data;
+	//						if (verbose) printf("%d has data %d\n", rank, pack_r->data);
+	//						memcpy(send, recv[src], i); //memory copy to mimic a real operation defined in reduce
+							int* pack_s = reinterpret_cast<int*> (send);
+							int* pack_r = reinterpret_cast<int*> (recv[src]);
+							for(int k = 0; k < i/sizeof(int); k++)
+							{
+								pack_s[k] += pack_r[k];
+							}
+							if (verbose) printf("%d has data %d\n", rank, pack_s[0]);
+							count++;
 						}
-						if (verbose) printf("%d has data %d\n", rank, pack_s[0]);
-						count++;
-					}
-				} while(count<nproc-1);
-			}		
+					} while(count<nproc-1);
+				}	
+  			MPI_Barrier(MPI_COMM_WORLD);	
+			}
       if (rank == ns)	{
 		    clock_gettime(CLOCK_MONOTONIC, &time_e);
 				printf("%-7d", nproc);
 				printf("%-9u", pack->data);
 				printf("%-9s", "S");
 				printf("%-12u", i);
-	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec))/ITER;
 	      double time_ss = time_ns/1e9;
 	      double time_us = time_ns/1e3;
 				printf("%-12.2f", time_ss);
@@ -364,7 +372,9 @@ int main(int argc, char *argv[]) {
   		//MPI reduce
       if (rank == ns)
 				clock_gettime(CLOCK_MONOTONIC, &time_s);
-  		MPI_Reduce(send,recv[0],i/sizeof(int),MPI_INT,MPI_SUM,ns,MPI_COMM_WORLD);
+			for (int ii=0;ii<ITER;ii++) {
+  			MPI_Reduce(send,recv[0],i/sizeof(int),MPI_INT,MPI_SUM,ns,MPI_COMM_WORLD);
+  		}
   		MPI_Barrier(MPI_COMM_WORLD);
       if (rank == ns)	{
 		    clock_gettime(CLOCK_MONOTONIC, &time_e);
@@ -373,7 +383,7 @@ int main(int argc, char *argv[]) {
 				printf("%-9u", pack_r->data);
 				printf("%-9s", "MPI");
 				printf("%-12u", i);
-	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec))/ITER;
 	      double time_ss = time_ns/1e9;
 	      double time_us = time_ns/1e3;
 				printf("%-12.2f", time_ss);
