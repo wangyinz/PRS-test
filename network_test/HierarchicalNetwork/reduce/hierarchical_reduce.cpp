@@ -20,7 +20,7 @@
 #define PHOTON_BUF_SIZE (1024*1024*128) // 128M
 #define PHOTON_TAG       UINT32_MAX
 
-#define ITER      20
+#define ITER      3
 
 
 using namespace std;
@@ -232,33 +232,34 @@ int main(int argc, char *argv[]) {
     printf("%-7s%-9s%-9s%-12s%-12s%-14s\n", "Ranks", "Results", "Method", "Bytes",\
 	   "Time (s)",	"Time (us)");
 
-  struct timespec time_s, time_e;
+  struct timespec time_s_h[ITER], time_e_h[ITER];
+  struct timespec time_s_s[ITER], time_e_s[ITER];
+  struct timespec time_s_m[ITER], time_e_m[ITER];
   
-  for (ns = 0; ns < 1; ns++) {
+	for (ns = 0; ns < 1; ns++) {
 
-    for (a=sizeof(parcel); a<=PHOTON_BUF_SIZE; a+=a) {
-      
-      i = (int)a;
-      
-      parcel* pack = reinterpret_cast<parcel*> (send);
-			pack->data=rank;
-			
-			photon_cid request;
-			int flag, src;
-			bool first_arrival(true);
-			
-			int source;
-			int mask    = 0x1;
-			int lroot   = ns;
-			int comm_size = nproc;
-			int relrank = (rank - lroot + comm_size) % comm_size;
-
-			//Hierarchical reduce
-      if (rank == ns)
-				clock_gettime(CLOCK_MONOTONIC, &time_s);
-			for (int ii=0;ii<ITER;ii++) {
+	  for (a=sizeof(parcel); a<=PHOTON_BUF_SIZE; a+=a) {
+	  
+			for (int ii = 0; ii < ITER; ii++) {
+		    
+		    i = (int)a;
+		    
+		    parcel* pack = reinterpret_cast<parcel*> (send);
 				pack->data=rank;
-				mask    = 0x1;
+			
+				photon_cid request;
+				int flag, src;
+				bool first_arrival(true);
+			
+				int source;
+				int mask    = 0x1;
+				int lroot   = ns;
+				int comm_size = nproc;
+				int relrank = (rank - lroot + comm_size) % comm_size;
+
+				//Hierarchical reduce
+		    if (rank == ns)
+					clock_gettime(CLOCK_MONOTONIC, &time_s_h[ii]);
 				while (mask < comm_size) {
 					/* Receive */
 					if ((mask & relrank) == 0) {
@@ -298,30 +299,27 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 					mask <<= 1;
+				}		
+		    if (rank == ns)	{
+				  clock_gettime(CLOCK_MONOTONIC, &time_e_h[ii]);
+//					printf("%-7d", nproc);
+//					printf("%-9u", pack->data);
+//					printf("%-9s", "H");
+//					printf("%-12u", i);
+//			    double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+//			    double time_ss = time_ns/1e9;
+//			    double time_us = time_ns/1e3;
+//					printf("%-12.2f", time_ss);
+//					printf("%-14.2f\n", time_us);
+//					fflush(stdout);
 				}
-  			MPI_Barrier(MPI_COMM_WORLD);		
-			}
-      if (rank == ns)	{
-		    clock_gettime(CLOCK_MONOTONIC, &time_e);
-				printf("%-7d", nproc);
-				printf("%-9u", pack->data);
-				printf("%-9s", "H");
-				printf("%-12u", i);
-	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec))/ITER;
-	      double time_ss = time_ns/1e9;
-	      double time_us = time_ns/1e3;
-				printf("%-12.2f", time_ss);
-				printf("%-14.2f\n", time_us);
-				fflush(stdout);
-			}
-  		MPI_Barrier(MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
 			
 			
-			//Simple reduce
-      if (rank == ns)
-				clock_gettime(CLOCK_MONOTONIC, &time_s);
-			for (int ii=0;ii<ITER;ii++) {
 				pack->data=rank;
+				//Simple reduce
+		    if (rank == ns)
+					clock_gettime(CLOCK_MONOTONIC, &time_s_s[ii]);
 				if (rank != ns) {
 					lbuf.addr = (uintptr_t)send;
 					lbuf.size = i;
@@ -350,54 +348,95 @@ int main(int argc, char *argv[]) {
 							count++;
 						}
 					} while(count<nproc-1);
-				}	
-  			MPI_Barrier(MPI_COMM_WORLD);	
-			}
-      if (rank == ns)	{
-		    clock_gettime(CLOCK_MONOTONIC, &time_e);
-				printf("%-7d", nproc);
-				printf("%-9u", pack->data);
-				printf("%-9s", "S");
-				printf("%-12u", i);
-	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec))/ITER;
-	      double time_ss = time_ns/1e9;
-	      double time_us = time_ns/1e3;
-				printf("%-12.2f", time_ss);
-				printf("%-14.2f\n", time_us);
-				fflush(stdout);
-			}
-  		MPI_Barrier(MPI_COMM_WORLD);
-  		
-  		pack->data=rank;
-  		//MPI reduce
-      if (rank == ns)
-				clock_gettime(CLOCK_MONOTONIC, &time_s);
-			for (int ii=0;ii<ITER;ii++) {
-  			MPI_Reduce(send,recv[0],i/sizeof(int),MPI_INT,MPI_SUM,ns,MPI_COMM_WORLD);
-  		}
-  		MPI_Barrier(MPI_COMM_WORLD);
-      if (rank == ns)	{
-		    clock_gettime(CLOCK_MONOTONIC, &time_e);
-				parcel* pack_r = reinterpret_cast<parcel*> (recv[0]);
-				printf("%-7d", nproc);
-				printf("%-9u", pack_r->data);
-				printf("%-9s", "MPI");
-				printf("%-12u", i);
-	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec))/ITER;
-	      double time_ss = time_ns/1e9;
-	      double time_us = time_ns/1e3;
-				printf("%-12.2f", time_ss);
-				printf("%-14.2f\n", time_us);
-				fflush(stdout);
-			}
+				}		
+		    if (rank == ns)	{
+				  clock_gettime(CLOCK_MONOTONIC, &time_e_s[ii]);
+//					printf("%-7d", nproc);
+//					printf("%-9u", pack->data);
+//					printf("%-9s", "S");
+//					printf("%-12u", i);
+//			    double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+//			    double time_ss = time_ns/1e9;
+//			    double time_us = time_ns/1e3;
+//					printf("%-12.2f", time_ss);
+//					printf("%-14.2f\n", time_us);
+//					fflush(stdout);
+				}
+				MPI_Barrier(MPI_COMM_WORLD);
+				
+				pack->data=rank;
+				//MPI reduce
+		    if (rank == ns)
+					clock_gettime(CLOCK_MONOTONIC, &time_s_m[ii]);
+				MPI_Reduce(send,recv[0],i/sizeof(int),MPI_INT,MPI_SUM,ns,MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+		    if (rank == ns)	{
+				  clock_gettime(CLOCK_MONOTONIC, &time_e_m[ii]);
+//					parcel* pack_r = reinterpret_cast<parcel*> (recv[0]);
+//					printf("%-7d", nproc);
+//					printf("%-9u", pack_r->data);
+//					printf("%-9s", "MPI");
+//					printf("%-12u", i);
+//			    double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+//			    double time_ss = time_ns/1e9;
+//			    double time_us = time_ns/1e3;
+//					printf("%-12.2f", time_ss);
+//					printf("%-14.2f\n", time_us);
+//					fflush(stdout);
+				}
 
-      if (!a) a = 0.5;
-    
-//      if (rank == ns) {
-//        send_done(nproc, rank);
-//      }
-    }
-  }
+		    if (!a) a = 0.5;
+		  
+	//      if (rank == ns) {
+	//        send_done(nproc, rank);
+	//      }
+		  }
+		  
+	    if (rank == ns) {
+	    		double time_ns_h(0.0);
+	    		double time_ns_s(0.0);
+	    		double time_ns_m(0.0);
+					for(int iii = 0; iii < ITER; iii++){
+						 time_ns_h = time_ns_h + (double)(((time_e_h[iii].tv_sec - time_s_h[iii].tv_sec) * 1e9) + (time_e_h[iii].tv_nsec - time_s_h[iii].tv_nsec));
+						 time_ns_s = time_ns_s + (double)(((time_e_s[iii].tv_sec - time_s_s[iii].tv_sec) * 1e9) + (time_e_s[iii].tv_nsec - time_s_s[iii].tv_nsec));
+						 time_ns_m = time_ns_m + (double)(((time_e_m[iii].tv_sec - time_s_m[iii].tv_sec) * 1e9) + (time_e_m[iii].tv_nsec - time_s_m[iii].tv_nsec));
+					}
+					time_ns_h = time_ns_h / ITER;
+					time_ns_s = time_ns_s / ITER;
+					time_ns_m = time_ns_m / ITER;
+		    	parcel* pack = reinterpret_cast<parcel*> (send);
+	    
+					printf("%-7d", nproc);
+					printf("%-9u", pack->data);
+					printf("%-9s", "H");
+					printf("%-12u", i);
+			    double time_ss = time_ns_h/1e9;
+			    double time_us = time_ns_h/1e3;
+					printf("%-12.2f", time_ss);
+					printf("%-14.2f\n", time_us);
+					
+					printf("%-7d", nproc);
+					printf("%-9u", pack->data);
+					printf("%-9s", "S");
+					printf("%-12u", i);
+			    time_ss = time_ns_s/1e9;
+			    time_us = time_ns_s/1e3;
+					printf("%-12.2f", time_ss);
+					printf("%-14.2f\n", time_us);
+					
+					printf("%-7d", nproc);
+					printf("%-9u", pack->data);
+					printf("%-9s", "MPI");
+					printf("%-12u", i);
+			    time_ss = time_ns_m/1e9;
+			    time_us = time_ns_m/1e3;
+					printf("%-12.2f", time_ss);
+					printf("%-14.2f\n", time_us);
+					
+					fflush(stdout);
+	    }
+		}
+	}
 
  exit:
   photon_unregister_buffer(send, PHOTON_BUF_SIZE);
