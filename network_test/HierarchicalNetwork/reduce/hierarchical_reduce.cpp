@@ -282,8 +282,8 @@ int main(int argc, char *argv[]) {
 						if (source < comm_size) {
 						  source = (source + lroot) % comm_size;
 							do {
-								photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
-								if (request.u64 == 0xcafebabe ) {
+								photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_LEDGER);
+								if (flag && (request.u64 == 0xcafebabe) ) {
 									if (verbose) printf("%d received parcel from %d\n", rank, src);
 									//parcel* pack_s = reinterpret_cast<parcel*> (send);
 									//parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
@@ -348,8 +348,8 @@ int main(int argc, char *argv[]) {
 				else {
 					int count = 0;
 					do {
-						photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
-						if (request.u64 == 0xcafebabe ) {
+						photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_LEDGER);
+						if (flag && (request.u64 == 0xcafebabe) ) {
 							if (verbose) printf("%d received parcel from %d\n", rank, src);
 	//						parcel* pack_s = reinterpret_cast<parcel*> (send);
 	//						parcel* pack_r = reinterpret_cast<parcel*> (recv[src]);
