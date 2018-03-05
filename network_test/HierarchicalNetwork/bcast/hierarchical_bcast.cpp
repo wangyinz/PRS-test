@@ -17,7 +17,7 @@
 #include <mpi.h>
 #include "photon.h"
 
-#define PHOTON_BUF_SIZE (1024*1024*1024) // 1024M
+#define PHOTON_BUF_SIZE (1024*1024*128) // 128M
 #define PHOTON_TAG       UINT32_MAX
 
 #define LIST_LIMIT      1000
@@ -69,17 +69,17 @@ int send_done(int n, int r) {
   return 0;
 }
 
-//unsigned long upper_power_of_two(unsigned long v)
-//{
-//    v--;
-//    v |= v >> 1;
-//    v |= v >> 2;
-//    v |= v >> 4;
-//    v |= v >> 8;
-//    v |= v >> 16;
-//    v++;
-//    return v;
-//}
+unsigned long upper_power_of_two(unsigned long v)
+{
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+    return v;
+}
 
 int get_target(int root, int rank, int* rank_list, int &rank_list_size, int* target_list, int &target_list_size)
 {
@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
   
   for (ns = 0; ns < 1; ns++) {
 
-    for (a=sizeof(parcel); a<=PHOTON_BUF_SIZE; a+=a) {
+    for (a=upper_power_of_two(sizeof(parcel)); a<=PHOTON_BUF_SIZE; a+=a) {
 	  
 			for (int ii = 0; ii < ITER; ii++) {
       
