@@ -20,7 +20,7 @@
 #define PHOTON_BUF_SIZE (1024*1024*128) // 128M
 #define PHOTON_TAG       UINT32_MAX
 
-#define ITER      3
+#define ITER      20
 
 
 using namespace std;
@@ -137,10 +137,25 @@ typedef struct parcel {
 //  return 0;
 //}
 
+static void *wait_local(int &send_comp) {
+  photon_cid request;
+  int flag, rc, src;
+
+  while (send_comp) {
+    rc = photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL,
+                                 PHOTON_PROBE_EVQ);
+    if (rc != PHOTON_OK)
+      continue;  // no events                                                                                                                             
+    if (flag && (request.u64 == PHOTON_TAG))
+      send_comp--;
+  }
+  return NULL;
+}
+
 int main(int argc, char *argv[]) {
   
   float a;
-  int i, j, k, ns;
+  int i, j, k, ns, send_comp(0);
   int rank, nproc;
   
   //configuration
@@ -295,11 +310,13 @@ int main(int argc, char *argv[]) {
 						lbuf.size = i;
 						lbuf.priv = (struct photon_buffer_priv_t){0,0};
 						photon_put_with_completion(source, i, &lbuf, &rbuf[source], lid, rid, 0);
+						send_comp++;
 						if (verbose) printf("%d send parcel to %d\n", rank, source);
 						break;
 					}
 					mask <<= 1;
-				}		
+				}
+				wait_local(send_comp);
 		    if (rank == ns)	{
 				  clock_gettime(CLOCK_MONOTONIC, &time_e_h[ii]);
 //					printf("%-7d", nproc);
@@ -325,6 +342,7 @@ int main(int argc, char *argv[]) {
 					lbuf.size = i;
 					lbuf.priv = (struct photon_buffer_priv_t){0,0};
 					photon_put_with_completion(ns, i, &lbuf, &rbuf[ns], lid, rid, 0);
+					send_comp++;
 					if (verbose) printf("%d send parcel to %d\n", rank, ns);
 				} 
 				else {
@@ -349,6 +367,7 @@ int main(int argc, char *argv[]) {
 						}
 					} while(count<nproc-1);
 				}		
+				wait_local(send_comp);
 		    if (rank == ns)	{
 				  clock_gettime(CLOCK_MONOTONIC, &time_e_s[ii]);
 //					printf("%-7d", nproc);
