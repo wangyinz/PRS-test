@@ -21,6 +21,7 @@
 #define PHOTON_TAG       UINT32_MAX
 
 #define LIST_LIMIT      1000
+#define ITER            20
 
 
 using namespace std;
@@ -34,8 +35,23 @@ typedef struct parcel {
     int rank_list[LIST_LIMIT];
   } parcel;
 
+static void *wait_local(int &send_comp) {
+  photon_cid request;
+  int flag, rc, src;
+
+  while (send_comp) {
+    rc = photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL,
+                                 PHOTON_PROBE_EVQ);
+    if (rc != PHOTON_OK)
+      continue;  // no events                                                                                                                             
+    if (flag && (request.u64 == PHOTON_TAG))
+      send_comp--;
+  }
+  return NULL;
+}
+
 int send_done(int n, int r) {
-  int i;
+  int i, send_comp(0);
   photon_cid lid, rid;
   lid.u64 = PHOTON_TAG;
   lid.size = 0;
@@ -45,7 +61,9 @@ int send_done(int n, int r) {
     if (i==r)
       continue;
     photon_put_with_completion(i, 0, NULL, NULL, lid, rid, 0);
+    send_comp++;
   }
+	wait_local(send_comp);
   return 0;
 }
 
@@ -111,8 +129,8 @@ int receive_once(int rank, int nproc, int i, char* send, char **recv) {
   photon_cid request;
   int flag, src;
   do {
-    photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
-    if (request.u64 == 0xcafebabe) {
+    photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_LEDGER);
+    if (flag && (request.u64 == 0xcafebabe)) {
       if (verbose) printf("%d received parcel from %d\n", rank, src);
       //send=recv[src];
       //memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
@@ -126,10 +144,10 @@ int receive_once(int rank, int nproc, int i, char* send, char **recv) {
 
 int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_buffer_t lbuf, struct photon_buffer_t* rbuf, photon_cid lid, photon_cid rid) {
   photon_cid request;
-  int flag, src;
+  int flag, src, send_comp(0);
   do {
-    photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_ANY);
-    if (request.u64 == 0xcafebabe) {
+    photon_probe_completion(PHOTON_ANY_SOURCE, &flag, NULL, &request, &src, NULL, PHOTON_PROBE_LEDGER);
+    if (flag && (request.u64 == 0xcafebabe)) {
       if (verbose) printf("%d received parcel from %d\n", rank, src);
       //send=recv[src];
       //memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
@@ -145,8 +163,10 @@ int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_
       lbuf.priv = (struct photon_buffer_priv_t){0,0};
       for (int j=0; j<send_list_size; j++) {
         photon_put_with_completion(send_list[j], i, &lbuf, &rbuf[send_list[j]], lid, rid, 0);
+        send_comp++;
 	  		if (verbose) printf("%d send parcel to %d\n", rank, send_list[j]);
       }
+			wait_local(send_comp);
 			MPI_Barrier(MPI_COMM_WORLD);
 			receive_once(rank, nproc, i, send, recv);
     }
@@ -158,7 +178,7 @@ int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_
 int main(int argc, char *argv[]) {
   
   float a;
-  int i, j, k, ns;
+  int i, j, k, ns, send_comp(0);
   int rank, nproc;
   
   //configuration
@@ -265,109 +285,162 @@ int main(int argc, char *argv[]) {
     printf("%-7s%-9s%-9s%-12s%-12s%-14s\n", "Ranks", "Senders", "Method", "Bytes",\
 	   "Time (s)",	"Time (us)");
 
-  struct timespec time_s, time_e;
+  struct timespec time_s_h[ITER], time_e_h[ITER];
+  struct timespec time_s_s[ITER], time_e_s[ITER];
+  struct timespec time_s_m[ITER], time_e_m[ITER];
   
   for (ns = 0; ns < 1; ns++) {
 
     for (a=sizeof(parcel); a<=PHOTON_BUF_SIZE; a+=a) {
+	  
+			for (int ii = 0; ii < ITER; ii++) {
       
-      i = (int)a;
-    
-      if (rank != ns) {
-        transfer(rank, nproc, i, send, recv, lbuf, rbuf, lid, rid);
-      }
-      
-      parcel* pack = reinterpret_cast<parcel*> (send);
-      pack->source = ns;
-			for (j=0; j<nproc; j++)
-				pack->rank_list[j]=nproc-1-j; //make the list in reverse order
+		    i = (int)a;
+		  
+		    if (rank != ns) {
+		      transfer(rank, nproc, i, send, recv, lbuf, rbuf, lid, rid);
+		    }
+		    
+		    parcel* pack = reinterpret_cast<parcel*> (send);
+		    pack->source = ns;
+				for (j=0; j<nproc; j++)
+					pack->rank_list[j]=nproc-1-j; //make the list in reverse order
 			
-      int* send_list;
-      int send_list_size;
-      send_list = (int *)malloc(nproc * sizeof(int));
-      get_target(pack->source, rank, pack->rank_list, nproc, send_list, send_list_size);
+		    int* send_list;
+		    int send_list_size;
+		    send_list = (int *)malloc(nproc * sizeof(int));
+		    get_target(pack->source, rank, pack->rank_list, nproc, send_list, send_list_size);
 
-      // PUT
-      if (rank == ns) {
-				//Hierarchical broadcast
-				clock_gettime(CLOCK_MONOTONIC, &time_s);
-				lbuf.addr = (uintptr_t)send;
-				lbuf.size = i;
-				lbuf.priv = (struct photon_buffer_priv_t){0,0};
-				for (j=0; j<send_list_size; j++) {
-					photon_put_with_completion(send_list[j], i, &lbuf, &rbuf[send_list[j]], lid, rid, 0);
-					if (verbose) printf("%d send parcel to %d\n", rank, send_list[j]);
-				}
-				MPI_Barrier(MPI_COMM_WORLD);	
-		    clock_gettime(CLOCK_MONOTONIC, &time_e);
+		    // PUT
+		    if (rank == ns) {
+					//Hierarchical broadcast
+					clock_gettime(CLOCK_MONOTONIC, &time_s_h[ii]);
+					lbuf.addr = (uintptr_t)send;
+					lbuf.size = i;
+					lbuf.priv = (struct photon_buffer_priv_t){0,0};
+					for (j=0; j<send_list_size; j++) {
+						photon_put_with_completion(send_list[j], i, &lbuf, &rbuf[send_list[j]], lid, rid, 0);
+						send_comp++;
+						if (verbose) printf("%d send parcel to %d\n", rank, send_list[j]);
+					}
+					wait_local(send_comp);
+					MPI_Barrier(MPI_COMM_WORLD);	
 
-				if (rank == ns) {
-					printf("%-7d", nproc);
-					printf("%-9u", ns);
-					printf("%-9s", "H");
-					printf("%-12u", i);
-		      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
-		      double time_ss = time_ns/1e9;
-		      double time_us = time_ns/1e3;
-					printf("%-12.2f", time_ss);
-					printf("%-14.2f\n", time_us);
-					fflush(stdout);
-				}
+					if (rank == ns) {
+				  	clock_gettime(CLOCK_MONOTONIC, &time_e_h[ii]);
+//						printf("%-7d", nproc);
+//						printf("%-9u", ns);
+//						printf("%-9s", "H");
+//						printf("%-12u", i);
+//				    double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+//				    double time_ss = time_ns/1e9;
+//				    double time_us = time_ns/1e3;
+//						printf("%-12.2f", time_ss);
+//						printf("%-14.2f\n", time_us);
+//						fflush(stdout);
+					}
 				
-				//Simple broadcast
-				clock_gettime(CLOCK_MONOTONIC, &time_s);
-				lbuf.addr = (uintptr_t)send;
-				lbuf.size = i;
-				lbuf.priv = (struct photon_buffer_priv_t){0,0};
-				for (j=0; j<nproc; j++) {
-					if(j != rank) {
-						photon_put_with_completion(j, i, &lbuf, &rbuf[j], lid, rid, 0);
-						if (verbose) printf("%d send parcel to %d\n", rank, j);
+					//Simple broadcast
+				  if (rank == ns)
+						clock_gettime(CLOCK_MONOTONIC, &time_s_s[ii]);
+					lbuf.addr = (uintptr_t)send;
+					lbuf.size = i;
+					lbuf.priv = (struct photon_buffer_priv_t){0,0};
+					for (j=0; j<nproc; j++) {
+						if(j != rank) {
+							photon_put_with_completion(j, i, &lbuf, &rbuf[j], lid, rid, 0);
+							send_comp++;
+							if (verbose) printf("%d send parcel to %d\n", rank, j);
+						}
+					}
+					wait_local(send_comp);
+					MPI_Barrier(MPI_COMM_WORLD);	
+
+					if (rank == ns) {
+				  	clock_gettime(CLOCK_MONOTONIC, &time_e_s[ii]);
+//						printf("%-7d", nproc);
+//						printf("%-9u", ns);
+//						printf("%-9s", "S");
+//						printf("%-12u", i);
+//				    double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+//				    double time_ss = time_ns/1e9;
+//				    double time_us = time_ns/1e3;
+//						printf("%-12.2f", time_ss);
+//						printf("%-14.2f\n", time_us);
+//						fflush(stdout);
 					}
 				}
+		  
+		    if (rank == ns) {
+		      send_done(nproc, rank);
+		    }
+		    
+				//MPI bcast
 				MPI_Barrier(MPI_COMM_WORLD);	
-		    clock_gettime(CLOCK_MONOTONIC, &time_e);
+		    if (rank == ns)
+					clock_gettime(CLOCK_MONOTONIC, &time_s_m[ii]);
+				MPI_Bcast(send, i, MPI_BYTE, ns, MPI_COMM_WORLD);
+				MPI_Barrier(MPI_COMM_WORLD);
+		    if (rank == ns)	{
+				  clock_gettime(CLOCK_MONOTONIC, &time_e_m[ii]);
+//					printf("%-7d", nproc);
+//					printf("%-9u", ns);
+//					printf("%-9s", "MPI");
+//					printf("%-12u", i);
+//			    double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
+//			    double time_ss = time_ns/1e9;
+//			    double time_us = time_ns/1e3;
+//					printf("%-12.2f", time_ss);
+//					printf("%-14.2f\n", time_us);
+//					fflush(stdout);
+				}		
 
-				if (rank == ns) {
-					printf("%-7d", nproc);
-					printf("%-9u", ns);
-					printf("%-9s", "S");
-					printf("%-12u", i);
-		      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
-		      double time_ss = time_ns/1e9;
-		      double time_us = time_ns/1e3;
-					printf("%-12.2f", time_ss);
-					printf("%-14.2f\n", time_us);
-					fflush(stdout);
+		    if (!a) a = 0.5;
+		    
+	  	}
+		  
+	    if (rank == ns) {
+    		double time_ns_h(0.0);
+    		double time_ns_s(0.0);
+    		double time_ns_m(0.0);
+				for(int iii = 0; iii < ITER; iii++){
+					 time_ns_h = time_ns_h + (double)(((time_e_h[iii].tv_sec - time_s_h[iii].tv_sec) * 1e9) + (time_e_h[iii].tv_nsec - time_s_h[iii].tv_nsec));
+					 time_ns_s = time_ns_s + (double)(((time_e_s[iii].tv_sec - time_s_s[iii].tv_sec) * 1e9) + (time_e_s[iii].tv_nsec - time_s_s[iii].tv_nsec));
+					 time_ns_m = time_ns_m + (double)(((time_e_m[iii].tv_sec - time_s_m[iii].tv_sec) * 1e9) + (time_e_m[iii].tv_nsec - time_s_m[iii].tv_nsec));
 				}
-			}
+				time_ns_h = time_ns_h / ITER;
+				time_ns_s = time_ns_s / ITER;
+				time_ns_m = time_ns_m / ITER;
     
-      if (rank == ns) {
-        send_done(nproc, rank);
-      }
-      
-  		//MPI bcast
-			MPI_Barrier(MPI_COMM_WORLD);	
-      if (rank == ns)
-				clock_gettime(CLOCK_MONOTONIC, &time_s);
-  		MPI_Bcast(send, i, MPI_BYTE, ns, MPI_COMM_WORLD);
-			MPI_Barrier(MPI_COMM_WORLD);
-      if (rank == ns)	{
-		    clock_gettime(CLOCK_MONOTONIC, &time_e);
+				printf("%-7d", nproc);
+				printf("%-9u", ns);
+				printf("%-9s", "H");
+				printf("%-12u", i);
+		    double time_ss = time_ns_h/1e9;
+		    double time_us = time_ns_h/1e3;
+				printf("%-12.2f", time_ss);
+				printf("%-14.2f\n", time_us);
+				
+				printf("%-7d", nproc);
+				printf("%-9u", ns);
+				printf("%-9s", "S");
+				printf("%-12u", i);
+		    time_ss = time_ns_s/1e9;
+		    time_us = time_ns_s/1e3;
+				printf("%-12.2f", time_ss);
+				printf("%-14.2f\n", time_us);
+				
 				printf("%-7d", nproc);
 				printf("%-9u", ns);
 				printf("%-9s", "MPI");
 				printf("%-12u", i);
-	      double time_ns = (double)(((time_e.tv_sec - time_s.tv_sec) * 1e9) + (time_e.tv_nsec - time_s.tv_nsec));
-	      double time_ss = time_ns/1e9;
-	      double time_us = time_ns/1e3;
+		    time_ss = time_ns_m/1e9;
+		    time_us = time_ns_m/1e3;
 				printf("%-12.2f", time_ss);
 				printf("%-14.2f\n", time_us);
+				
 				fflush(stdout);
-			}		
-
-      if (!a) a = 0.5;
-      
+			}
     }
   }
 
