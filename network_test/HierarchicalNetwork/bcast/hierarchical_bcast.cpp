@@ -17,7 +17,7 @@
 #include <mpi.h>
 #include "photon.h"
 
-#define PHOTON_BUF_SIZE (1024*1024*128) // 128M
+#define PHOTON_BUF_SIZE (1024*1024*1024) // 1024M
 #define PHOTON_TAG       UINT32_MAX
 
 #define LIST_LIMIT      1000
