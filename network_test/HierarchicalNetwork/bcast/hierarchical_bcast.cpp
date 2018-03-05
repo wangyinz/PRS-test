@@ -44,8 +44,10 @@ static void *wait_local(int &send_comp) {
                                  PHOTON_PROBE_EVQ);
     if (rc != PHOTON_OK)
       continue;  // no events                                                                                                                             
-    if (flag && (request.u64 == PHOTON_TAG))
+    if (flag && (request.u64 == PHOTON_TAG)) {
       send_comp--;
+//      if (verbose) printf("%d send remains\n", send_comp);
+    }
   }
   return NULL;
 }
@@ -136,7 +138,6 @@ int receive_once(int rank, int nproc, int i, char* send, char **recv) {
       //memcpy(send, recv[src], PHOTON_BUF_SIZE*sizeof(uint8_t));
       send=recv[0];
       //memcpy(send, recv[0], i);
-			MPI_Barrier(MPI_COMM_WORLD);
   		return 0;
     }
   } while (1);
@@ -166,11 +167,9 @@ int transfer(int rank, int nproc, int i, char* send, char **recv, struct photon_
         send_comp++;
 	  		if (verbose) printf("%d send parcel to %d\n", rank, send_list[j]);
       }
-			wait_local(send_comp);
-			MPI_Barrier(MPI_COMM_WORLD);
-			receive_once(rank, nproc, i, send, recv);
     }
   } while (request.u64 != 0xdeadbeef);
+	wait_local(send_comp);
 
   return 0;
 }
@@ -296,20 +295,22 @@ int main(int argc, char *argv[]) {
 			for (int ii = 0; ii < ITER; ii++) {
       
 		    i = (int)a;
+			
+			  int* send_list;
+			  int send_list_size;
+			  parcel* pack = reinterpret_cast<parcel*> (send);
 		  
 		    if (rank != ns) {
+					if (verbose) printf("------%d start receiving method in %d------\n", rank, ii);
 		      transfer(rank, nproc, i, send, recv, lbuf, rbuf, lid, rid);
+		    } 
+		    else {
+				  pack->source = ns;
+					for (j=0; j<nproc; j++)
+						pack->rank_list[j]=nproc-1-j; //make the list in reverse order
+				  send_list = (int *)malloc(nproc * sizeof(int));
+				  get_target(pack->source, rank, pack->rank_list, nproc, send_list, send_list_size);
 		    }
-		    
-		    parcel* pack = reinterpret_cast<parcel*> (send);
-		    pack->source = ns;
-				for (j=0; j<nproc; j++)
-					pack->rank_list[j]=nproc-1-j; //make the list in reverse order
-			
-		    int* send_list;
-		    int send_list_size;
-		    send_list = (int *)malloc(nproc * sizeof(int));
-		    get_target(pack->source, rank, pack->rank_list, nproc, send_list, send_list_size);
 
 		    // PUT
 		    if (rank == ns) {
@@ -324,8 +325,7 @@ int main(int argc, char *argv[]) {
 						if (verbose) printf("%d send parcel to %d\n", rank, send_list[j]);
 					}
 					wait_local(send_comp);
-					MPI_Barrier(MPI_COMM_WORLD);	
-
+					
 					if (rank == ns) {
 				  	clock_gettime(CLOCK_MONOTONIC, &time_e_h[ii]);
 //						printf("%-7d", nproc);
@@ -339,7 +339,17 @@ int main(int argc, char *argv[]) {
 //						printf("%-14.2f\n", time_us);
 //						fflush(stdout);
 					}
+				  if (rank == ns) {
+				    send_done(nproc, rank);
+				  }
+					if (verbose) printf("------%d done with H method in %d------\n", rank, ii);
+				}
+				MPI_Barrier(MPI_COMM_WORLD);
 				
+		    if (rank != ns) {
+					receive_once(rank, nproc, i, send, recv);
+				}
+				else {
 					//Simple broadcast
 				  if (rank == ns)
 						clock_gettime(CLOCK_MONOTONIC, &time_s_s[ii]);
@@ -354,10 +364,11 @@ int main(int argc, char *argv[]) {
 						}
 					}
 					wait_local(send_comp);
-					MPI_Barrier(MPI_COMM_WORLD);	
+				}
+				MPI_Barrier(MPI_COMM_WORLD);	
 
-					if (rank == ns) {
-				  	clock_gettime(CLOCK_MONOTONIC, &time_e_s[ii]);
+				if (rank == ns) {
+			  	clock_gettime(CLOCK_MONOTONIC, &time_e_s[ii]);
 //						printf("%-7d", nproc);
 //						printf("%-9u", ns);
 //						printf("%-9s", "S");
@@ -368,18 +379,15 @@ int main(int argc, char *argv[]) {
 //						printf("%-12.2f", time_ss);
 //						printf("%-14.2f\n", time_us);
 //						fflush(stdout);
-					}
 				}
-		  
-		    if (rank == ns) {
-		      send_done(nproc, rank);
-		    }
+				if (verbose) printf("------%d done with S method in %d------\n", rank, ii);
 		    
 				//MPI bcast
 				MPI_Barrier(MPI_COMM_WORLD);	
 		    if (rank == ns)
 					clock_gettime(CLOCK_MONOTONIC, &time_s_m[ii]);
 				MPI_Bcast(send, i, MPI_BYTE, ns, MPI_COMM_WORLD);
+				if (verbose) printf("%d ran MPI\n", rank);
 				MPI_Barrier(MPI_COMM_WORLD);
 		    if (rank == ns)	{
 				  clock_gettime(CLOCK_MONOTONIC, &time_e_m[ii]);
@@ -394,8 +402,9 @@ int main(int argc, char *argv[]) {
 //					printf("%-14.2f\n", time_us);
 //					fflush(stdout);
 				}		
+					if (verbose) printf("------%d done with MPI method in %d------\n", rank, ii);
 
-		    if (!a) a = 0.5;
+//		    if (!a) a = 0.5;
 		    
 	  	}
 		  
